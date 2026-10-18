@@ -1,11 +1,21 @@
 {
   "$schema": "https://raw.githubusercontent.com/microsoft/vcpkg-tool/main/docs/vcpkg.schema.json",
   "name": "autoaudioswitch",
-  "version": "1",
+  "version-string": "1.0.3.0",
   "dependencies": [
-    "boost-stl-interfaces",
-    "rsm-binary-io",
-    "spdlog",
-    "simpleini"
-  ]
+    {
+      "name": "fmt",
+      "version>=": "12.1.0"
+    },
+    {
+      "name": "spdlog",
+      "version>=": "1.16.0"
+    },
+    "directxtk",
+    "rapidcsv",
+    "flick-api",
+    "skse-menu-framework",
+    "modconfigui"
+  ],
+  "builtin-baseline": "ee12231b20c95013c6638d845d04c91559a1d1ff"
 }

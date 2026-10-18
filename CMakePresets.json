@@ -1,83 +1,55 @@
 {
+  "version": 3,
   "configurePresets": [
     {
-      "binaryDir": "${sourceDir}/build",
-      "cacheVariables": {
-        "CMAKE_BUILD_TYPE": {
-          "type": "STRING",
-          "value": "Debug"
-        }
-      },
-      "errors": {
-        "deprecated": true
-      },
+      "name": "base",
       "hidden": true,
-      "name": "cmake-dev",
-      "warnings": {
-        "deprecated": true,
-        "dev": true
+      "generator": "Ninja",
+      "binaryDir": "${sourceDir}/build/${presetName}",
+      "installDir": "${sourceDir}/install/${presetName}",
+      "architecture": {
+        "value": "x64",
+        "strategy": "external"
+      },
+      "cacheVariables": {
+        "CMAKE_CXX_COMPILER": "cl.exe",
+        "CMAKE_CXX_FLAGS": "/permissive- /Zc:preprocessor /EHsc /MP /W4 -DWIN32_LEAN_AND_MEAN -DNOMINMAX -DUNICODE -D_UNICODE",
+        "CMAKE_TOOLCHAIN_FILE": "$env{VCPKG_ROOT}/scripts/buildsystems/vcpkg.cmake",
+        "VCPKG_OVERLAY_PORTS": "${sourceDir}/cmake/ports/",
+        "VCPKG_TARGET_TRIPLET": "x64-windows-static",
+        "CMAKE_MSVC_RUNTIME_LIBRARY": "MultiThreaded$<$<CONFIG:Debug>:Debug>",
+        "CMAKE_EXPORT_COMPILE_COMMANDS": "ON"
       }
     },
     {
-      "cacheVariables": {
-        "CMAKE_TOOLCHAIN_FILE": {
-          "type": "STRING",
-          "value": "$env{VCPKG_ROOT}/scripts/buildsystems/vcpkg.cmake"
-        }
-      },
-      "hidden": true,
-      "name": "vcpkg"
-    },
-    {
-      "cacheVariables": {
-        "CMAKE_MSVC_RUNTIME_LIBRARY": {
-          "type": "STRING",
-          "value": "MultiThreaded$<$<CONFIG:Debug>:Debug>DLL"
-        },
-        "VCPKG_TARGET_TRIPLET": {
-          "type": "STRING",
-          "value": "x64-windows-static-md"
-        }
-      },
-      "hidden": true,
-      "name": "windows"
-    },
-    {
-      "binaryDir": "${sourceDir}/build-vr",
-      "cacheVariables": {
-        "BUILD_SKYRIMVR": {
-          "type": "BOOL",
-          "value": "ON"
-        }
-      },
-      "hidden": true,
-      "name": "vr"
-    },
-    {
-      "architecture": {
-        "strategy": "set",
-        "value": "x64"
-      },
-      "cacheVariables": {
-        "CMAKE_CXX_FLAGS": "/EHsc /MP /W4 /WX",
-        "CMAKE_CXX_FLAGS_RELEASE": "/O2 /DNDEBUG"
-      },
-      "generator": "Visual Studio 17 2022",
+      "name": "debug",
       "inherits": [
-        "cmake-dev",
-        "vcpkg",
-        "windows"
+        "base"
       ],
-      "name": "vs2022-windows",
-      "toolset": "v143"
+      "displayName": "Debug",
+      "cacheVariables": {
+        "CMAKE_BUILD_TYPE": "Debug"
+      }
     },
     {
+      "name": "release",
       "inherits": [
-        "vr",
-        "vs2022-windows"
+        "base"
       ],
-      "name": "vs2022-windows-vr"
+      "displayName": "Release",
+      "cacheVariables": {
+        "CMAKE_BUILD_TYPE": "Release"
+      }
+    },
+    {
+      "name": "relwithdebuginfo",
+      "inherits": [
+        "base"
+      ],
+      "displayName": "RelWithDebInfo",
+      "cacheVariables": {
+        "CMAKE_BUILD_TYPE": "RelWithDebInfo"
+      }
     }
-  ],
-  "version": 3
+  ]
 }
