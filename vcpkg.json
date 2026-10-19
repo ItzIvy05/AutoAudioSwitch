@@ -13,6 +13,7 @@
     },
     "directxtk",
     "rapidcsv",
+    "simpleini",
     "flick-api",
     "skse-menu-framework",
     "modconfigui"

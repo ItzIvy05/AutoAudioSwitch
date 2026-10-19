@@ -27,4 +27,13 @@ function(copyOutputs TARGET_FOLDER)
         )
     endif()
 
+    # Copy packaged mod files, including Data/Interface/Translations/AutoAudioSwitch_ENGLISH.txt.
+    if(EXISTS "${PROJECT_SOURCE_DIR}/data")
+        add_custom_command(
+            TARGET "${PROJECT_NAME}"
+            POST_BUILD
+            COMMAND "${CMAKE_COMMAND}" -E copy_directory "${PROJECT_SOURCE_DIR}/data" "${TARGET_FOLDER}"
+            VERBATIM
+        )
+    endif()
 endfunction()

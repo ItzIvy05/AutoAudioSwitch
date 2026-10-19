@@ -8,6 +8,22 @@ if(FUCK_BACKEND MATCHES "namespace SKSE::log")
 endif()
 file(WRITE "${SOURCE_PATH}/src/ModConfigUI/FUCKBackend.cpp" "${FUCK_BACKEND}")
 
+# Install registers with every framework it finds, two flags with the old behaviour as default let the plugin pick
+file(READ "${SOURCE_PATH}/include/ModConfigUI/ModConfigUI.h" MODCONFIGUI_HEADER)
+string(REPLACE "RestoreDefaultsFunction a_restoreDefaults = nullptr);" "RestoreDefaultsFunction a_restoreDefaults = nullptr, bool a_menuFramework = true, bool a_fuck = true);" MODCONFIGUI_HEADER "${MODCONFIGUI_HEADER}")
+if(NOT MODCONFIGUI_HEADER MATCHES "bool a_menuFramework = true, bool a_fuck = true")
+  message(FATAL_ERROR "ModConfigUI.h Install signature not patched")
+endif()
+file(WRITE "${SOURCE_PATH}/include/ModConfigUI/ModConfigUI.h" "${MODCONFIGUI_HEADER}")
+
+file(READ "${SOURCE_PATH}/src/ModConfigUI/ModConfigUI.cpp" MODCONFIGUI_SOURCE)
+string(REPLACE "RestoreDefaultsFunction a_restoreDefaults)" "RestoreDefaultsFunction a_restoreDefaults, bool a_menuFramework, bool a_fuck)" MODCONFIGUI_SOURCE "${MODCONFIGUI_SOURCE}")
+string(REPLACE "\t\tInternal::InstallSKSEMenuFramework();\n\t\tInternal::InstallFUCK();" "\t\tif (a_menuFramework)\n\t\t{\n\t\t\tInternal::InstallSKSEMenuFramework();\n\t\t}\n\t\tif (a_fuck)\n\t\t{\n\t\t\tInternal::InstallFUCK();\n\t\t}" MODCONFIGUI_SOURCE "${MODCONFIGUI_SOURCE}")
+if(NOT MODCONFIGUI_SOURCE MATCHES "bool a_menuFramework, bool a_fuck\\)" OR NOT MODCONFIGUI_SOURCE MATCHES "if \\(a_fuck\\)")
+  message(FATAL_ERROR "ModConfigUI.cpp Install not patched")
+endif()
+file(WRITE "${SOURCE_PATH}/src/ModConfigUI/ModConfigUI.cpp" "${MODCONFIGUI_SOURCE}")
+
 file(INSTALL "${SOURCE_PATH}/include/ModConfigUI" DESTINATION "${CURRENT_PACKAGES_DIR}/include")
 file(INSTALL "${SOURCE_PATH}/src/ModConfigUI" DESTINATION "${CURRENT_PACKAGES_DIR}/share/${PORT}/src")
 file(INSTALL "${CMAKE_CURRENT_LIST_DIR}/PCH.h" DESTINATION "${CURRENT_PACKAGES_DIR}/share/${PORT}")

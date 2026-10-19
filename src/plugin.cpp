@@ -2,11 +2,14 @@
 #include <mmdeviceapi.h>
 #include <functiondiscoverykeys_devpkey.h>
 #include <audioclient.h>
+#include <audiopolicy.h>
 #include <roapi.h>
 #include <wrl/implements.h>
 #include <wrl/wrappers/corewrappers.h>
 
 #include <semaphore>
+
+#include <REX/REX/INI.h>
 
 #include <ModConfigUI/Localization.h>
 #include <ModConfigUI/ModConfigUI.h>
@@ -19,6 +22,8 @@ namespace
 	namespace StreamRouting
 	{
 		REL::Relocation<HRESULT(STDMETHODCALLTYPE*)(IMMDevice*, REFIID, DWORD, PROPVARIANT*, void**)> _Activate;
+		REL::Relocation<HRESULT(STDMETHODCALLTYPE*)(IAudioSessionEvents*, AudioSessionDisconnectReason)> _OnSessionDisconnected;
+		std::atomic_bool Routed = false;
 
 		class ActivationHandler final : public Microsoft::WRL::RuntimeClass<Microsoft::WRL::RuntimeClassFlags<Microsoft::WRL::ClassicCom>, Microsoft::WRL::FtmBase, IActivateAudioInterfaceCompletionHandler>
 		{
@@ -55,16 +60,82 @@ namespace
 			return client->QueryInterface(__uuidof(IAudioClient), a_client);
 		}
 
+		// XAudio2 2.7 shuts its engine down on any session disconnect, Windows moves or reformats a routed stream instead
+		HRESULT STDMETHODCALLTYPE OnSessionDisconnected(IAudioSessionEvents* a_events, AudioSessionDisconnectReason a_reason)
+		{
+			logger::info("Audio session disconnected, reason {}"sv, std::to_underlying(a_reason));
+			if (Routed && (a_reason == DisconnectReasonDeviceRemoval || a_reason == DisconnectReasonFormatChanged)) {
+				return S_OK;
+			}
+			return _OnSessionDisconnected(a_events, a_reason);
+		}
+
+		void HookSessionEvents(std::uintptr_t a_xaudio)
+		{
+			// XAudio2_7.dll 9.29.1962 is the only 2.7 build, its IAudioSessionEvents vtable is at 0x22850
+			const auto nt = reinterpret_cast<const REX::W32::IMAGE_NT_HEADERS64*>(a_xaudio + reinterpret_cast<const REX::W32::IMAGE_DOS_HEADER*>(a_xaudio)->lfanew);
+			REL::Relocation<std::uintptr_t> vtable{ a_xaudio + 0x22850 };
+			if (nt->fileHeader.timeDateStamp != 0x4C0643CC || !REL::make_pattern<"48 83 EC 28 48 8B 49 F8 BA 01 00 88 88">().match(*reinterpret_cast<std::uintptr_t*>(vtable.address() + 9 * sizeof(std::uintptr_t)))) {
+				logger::error("Unknown XAudio2_7.dll build, device removal is left to XAudio2"sv);
+				return;
+			}
+			_OnSessionDisconnected = vtable.write_vfunc(9, &OnSessionDisconnected);
+		}
+
+		struct Module
+		{
+			std::uintptr_t base;
+			std::wstring path;
+		};
+
+		Module GetModule(const void* a_address)
+		{
+			REX::W32::MEMORY_BASIC_INFORMATION memory{};
+			wchar_t path[MAX_PATH]{};
+			REX::W32::VirtualQuery(a_address, &memory, sizeof(memory));
+			REX::W32::GetModuleFileNameW(static_cast<REX::W32::HMODULE>(memory.allocationBase), path, MAX_PATH);
+			return { reinterpret_cast<std::uintptr_t>(memory.allocationBase), path };
+		}
+
+		// matched by file name, the game loads XAudio2 by name and COM by registry path, so either copy counts
+		bool IsXAudio(const std::wstring& a_path)
+		{
+			return _wcsicmp(a_path.substr(a_path.find_last_of(L'\\') + 1).c_str(), L"XAudio2_7.dll") == 0;
+		}
+
 		HRESULT STDMETHODCALLTYPE HookedActivate(IMMDevice* a_device, REFIID a_riid, DWORD a_context, PROPVARIANT* a_params, void** a_interface)
 		{
-			REX::W32::MEMORY_BASIC_INFORMATION caller{};
-			if (REX::W32::VirtualQuery(_ReturnAddress(), &caller, sizeof(caller)) && caller.allocationBase == REX::W32::GetModuleHandleW(L"XAudio2_7.dll") && a_riid == __uuidof(IAudioClient) && a_interface) {
-				const auto result = ActivateRouted(a_interface);
-				if (SUCCEEDED(result)) {
-					return result;
-				}
-				logger::warn("Failed to open a routed audio stream ({:08X}), using the fixed device"sv, static_cast<std::uint32_t>(result));
+			if (a_riid != __uuidof(IAudioClient) || !a_interface) {
+				return _Activate(a_device, a_riid, a_context, a_params, a_interface);
 			}
+
+			// overlays such as Steam's game recorder wrap XAudio2's call, so the whole stack is searched for it
+			void* frames[16]{};
+			const auto count = RtlCaptureStackBackTrace(0, 16, frames, nullptr);
+			std::optional<Module> xaudio;
+			for (std::uint16_t i = 0; i < count && !xaudio; ++i) {
+				auto module = GetModule(frames[i]);
+				if (IsXAudio(module.path)) {
+					xaudio = std::move(module);
+				}
+			}
+
+			const auto via = SKSE::stl::utf16_to_utf8(GetModule(_ReturnAddress()).path).value_or(""s);
+			if (!xaudio) {
+				logger::info("Left an audio stream for {} unrouted"sv, via);
+				return _Activate(a_device, a_riid, a_context, a_params, a_interface);
+			}
+
+			static std::once_flag hooked;
+			std::call_once(hooked, HookSessionEvents, xaudio->base);
+
+			const auto result = ActivateRouted(a_interface);
+			Routed = SUCCEEDED(result);
+			if (Routed) {
+				logger::info("Opened a routed audio stream for XAudio2 via {}"sv, via);
+				return result;
+			}
+			logger::warn("Failed to open a routed audio stream for XAudio2 via {} ({:08X}), using the fixed device"sv, via, static_cast<std::uint32_t>(result));
 			return _Activate(a_device, a_riid, a_context, a_params, a_interface);
 		}
 
@@ -260,6 +331,9 @@ namespace
 	{
 		using ModConfigUI::Localization::Get;
 
+		// 0 SKSE Menu Framework, 1 F.U.C.K, 2 both
+		REX::INI::I32<> MenuFramework{ "General", "iMenuFramework", 2 };
+
 		struct State
 		{
 			std::vector<AppDevice::Device> devices;
@@ -310,12 +384,6 @@ namespace
 			a_renderer.LabeledText(Get("$AutoAudioSwitch_PlayingOn"), playing != Cache.devices.end() ? playing->name.c_str() : Get("$AutoAudioSwitch_NoDevice"));
 		}
 
-		void RestoreDefaults()
-		{
-			AppDevice::SetPreferred({});
-			Refresh(true);
-		}
-
 		constexpr ModConfigUI::Page PAGES[] = { { "$AutoAudioSwitch_General", DrawGeneralPage } };
 
 		constexpr ModConfigUI::ModInfo MOD_INFO{
@@ -324,13 +392,17 @@ namespace
 			.version = "1.0.3",
 			.author = "Parapets",
 			.description = "$AutoAudioSwitch_Description",
-			.nexusUrl = "https://www.nexusmods.com/skyrimspecialedition/mods/134404",
-			.sourceUrl = "https://github.com/Exit-9B/AutoAudioSwitch",
+			.sourceUrl = "https://github.com/ItzIvy05/AutoAudioSwitch",
 		};
 
 		void Install()
 		{
-			ModConfigUI::Install(MOD_INFO, PAGES, RestoreDefaults);
+			const auto ini = REX::INI::SettingStore::GetSingleton();
+			ini->Init("Data/SKSE/Plugins/AutoAudioSwitch.ini", "");
+			ini->Load();
+
+			const auto framework = MenuFramework.GetValue();
+			ModConfigUI::Install(MOD_INFO, PAGES, nullptr, framework != 1, framework != 0);
 		}
 	}
 }
