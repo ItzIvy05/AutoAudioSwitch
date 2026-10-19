@@ -1,26 +1,21 @@
 Automatically switches audio outputs when devices are connected or disconnected.
 
 ## Requirements
-* [CMake](https://cmake.org/)
-	* Add this to your `PATH`
-* [The Elder Scrolls V: Skyrim Special Edition](https://store.steampowered.com/app/489830)
+* Windows 10 1607 or later
+* [The Elder Scrolls V: Skyrim Special Edition](https://store.steampowered.com/app/489830), game version 1.6.1130 or later (SE 1.5.97 and VR are not supported)
+* [CommonLibSSE-NG](https://github.com/alandtse/CommonLibVR/tree/ng)
+	* Add the environment variable `COMMONLIB_SSE_FOLDER` with the value as the path to the CommonLibSSE-NG folder
 * [Vcpkg](https://github.com/microsoft/vcpkg)
 	* Add the environment variable `VCPKG_ROOT` with the value as the path to the folder containing vcpkg
-* [Visual Studio Community 2022](https://visualstudio.microsoft.com/)
-	* Desktop development with C++
+* [Visual Studio](https://visualstudio.microsoft.com/)
+	* Desktop development with C++, which includes CMake and Ninja
 
 ## Building
+From a Developer Command Prompt for x64:
 ```
-git clone https://github.com/Exit-9B/AutoAudioSwitch
-cd AutoAudioSwitch
-git submodule init
-git submodule update
-cmake --preset vs2022-windows
-cmake --build build --config Release
+cmake --preset release
+cmake --build build/release
 ```
 
 ## Tips
-* Run `cmake-gui build` to configure project variables
-* Configure `CMAKE_INSTALL_PREFIX` to install files to a virtual directory in Mod Organizer 2
-* Set `CMAKE_VS_INCLUDE_INSTALL_TO_DEFAULT_BUILD` to `ON` to automatically install the mod when building in Visual Studio
-* Build the `package` target to automatically build and zip up your dll in a ready-to-distribute format
+* Set the environment variable `SKYRIM_MODS_FOLDER` to copy the built plugin into `<SKYRIM_MODS_FOLDER>/AutoAudioSwitch`
