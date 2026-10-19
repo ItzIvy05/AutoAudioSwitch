@@ -212,8 +212,9 @@ namespace
 		constexpr std::wstring_view MMDEVAPI_PREFIX = L"\\\\?\\SWD#MMDEVAPI#";
 		constexpr std::wstring_view RENDER_SUFFIX = L"#{e6327cad-dcec-4949-ae8a-991e976a79d2}";
 
-		// Windows.Media.Internal.AudioPolicyConfig is undocumented
+		// Windows.Media.Internal.AudioPolicyConfig is undocumented, its IID changed in build 21390
 		constexpr IID POLICY_CONFIG{ 0xAB3D4648, 0xE242, 0x459F, { 0xB0, 0x2F, 0x54, 0x1C, 0x70, 0x30, 0x63, 0x24 } };
+		constexpr IID POLICY_CONFIG_DOWNLEVEL{ 0x2A59116D, 0x6C4F, 0x45E0, { 0xA7, 0x4F, 0x70, 0x7E, 0x3F, 0xEF, 0x92, 0x58 } };
 
 		// IInspectable, then 19 methods before these two
 		using SetPersistedDefaultAudioEndpoint = HRESULT(IInspectable*, UINT, EDataFlow, ERole, HSTRING);
@@ -225,8 +226,9 @@ namespace
 		{
 			static IInspectable* const policyConfig = []()
 			{
+				const HStringReference name(L"Windows.Media.Internal.AudioPolicyConfig");
 				IInspectable* result = nullptr;
-				if (FAILED(RoGetActivationFactory(HStringReference(L"Windows.Media.Internal.AudioPolicyConfig").Get(), POLICY_CONFIG, reinterpret_cast<void**>(&result)))) {
+				if (FAILED(RoGetActivationFactory(name.Get(), POLICY_CONFIG, reinterpret_cast<void**>(&result))) && FAILED(RoGetActivationFactory(name.Get(), POLICY_CONFIG_DOWNLEVEL, reinterpret_cast<void**>(&result)))) {
 					logger::error("Per-app audio device settings are not available"sv);
 				}
 				return result;
